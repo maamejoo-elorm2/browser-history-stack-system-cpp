@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Browser History & Tab Navigation Stack Visualizer</title>
+    <!-- FontAwesome for crisp retro-modern browser icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        cream: '#fbf8f3',
+                        parchment: '#f4efe6',
+                        cardbg: '#ffffff',
+                        borderwarm: '#e6ded4',
+                        brownrich: '#4a3b32',
+                        brownmuted: '#8c7a6b',
+                        terracotta: '#b85d43',
+                        terracottahover: '#a04d35',
+                        caramel: '#d4a373',
+                        caramelsoft: '#f3e8dc',
+                        sand: '#eee6db'
+                    },
+                    fontFamily: {
+                        sans: ['Segoe UI', '-apple-system', 'BlinkMacSystemFont', 'Roboto', 'sans-serif'],
+                        mono: ['Courier New', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #fbf8f3;
+            color: #4a3b32;
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f4efe6;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #d4a373;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #b85d43;
+        }
+
+        /* Stack Card Animations */
+        .stack-card {
+            transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .stack-card-enter {
+            animation: slideInDown 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+        }
+        .stack-card-exit {
+            animation: slideOutUp 0.3s ease-in forwards;
+        }
+
+        @keyframes slideInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-25px) scale(0.95);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        @keyframes slideOutUp {
+            from {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+            to {
+                opacity: 0;
+                transform: translateY(-30px) scale(0.9);
+            }
+        }
+
+        /* Top element pulsing glow */
+        .peek-pulse {
+            animation: warmGlow 1.5s infinite alternate;
+        }
+
+        @keyframes warmGlow {
+            0% {
+                box-shadow: 0 0 0 0 rgba(184, 93, 67, 0.4);
+                border-color: #b85d43;
+            }
+            100% {
+                box-shadow: 0 0 0 10px rgba(184, 93, 67, 0);
+                border-color: #d4a373;
+            }
+        }
+
+        /* Simulated Loader Bar */
+        .loading-bar {
+            height: 3px;
+            background: linear-gradient(90deg, #b85d43, #d4a373);
+            width: 0%;
+            transition: width 0.4s ease;
+        }
+
+        /* Tab Transition Effects */
+        .tab-btn {
+            transition: all 0.2s ease;
+        }
+        .tab-btn.active {
+            background-color: #ffffff;
+            color: #4a3b32;
+            border-color: #e6ded4;
+            border-bottom-color: #ffffff;
+            font-weight: 700;
+            box-shadow: 0 -2px 8px rgba(74, 59, 50, 0.04);
+        }
+    </style>
+</head>
+<body class="min-h-screen p-3 md:p-6 font-sans">
+
+    <div class="max-w-7xl mx-auto space-y-6">
+
+        <!-- HEADER MASTHEAD -->
+        <header class="flex flex-col md:flex-row md:items-center justify-between bg-cardbg p-5 rounded-2xl border-2 border-borderwarm shadow-sm gap-4">
+            <div>
+                <div class="flex items-center gap-3">
+                    <span class="p-2.5 bg-caramelsoft rounded-xl text-terracotta text-xl">
+                        <i class="fa-solid fa-layer-group"></i>
+                    </span>
+                    <div>
+                        <h1 class="text-2xl font-bold text-brownrich tracking-tight">Browser History & Tab Stack Simulator</h1>
+                        <p class="text-xs md:text-sm text-brownmuted mt-0.5">Interactive Last-In, First-Out (LIFO) Data Structure Engine</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Top Controls: Auto Demo & Reset -->
+            <div class="flex items-center gap-2 flex-wrap">
+                <button id="demoBtn" onclick="toggleAutoDemo()" class="px-4 py-2 bg-caramelsoft hover:bg-caramel/30 text-brownrich text-sm font-semibold rounded-xl border border-caramel/40 transition flex items-center gap-2">
+                    <i class="fa-solid fa-play text-terracotta" id="demoIcon"></i>
+                    <span id="demoText">Auto-Play Demo</span>
+                </button>
+                <button onclick="clearCurrentStack()" class="px-4 py-2 bg-parchment hover:bg-sand text-brownrich text-sm font-semibold rounded-xl border border-borderwarm transition flex items-center gap-2">
+                    <i class="fa-solid fa-rotate-left text-brownmuted"></i>
+                    <span>Reset Active Tab</span>
+                </button>
+            </div>
+        </header>
+
+        <!-- ANALYTICS DASHBOARD CARD -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
+            <div class="bg-cardbg p-4 rounded-xl border-2 border-borderwarm shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs uppercase font-bold text-brownmuted tracking-wider">Active Tab Depth</p>
+                    <h3 id="statBackDepth" class="text-2xl font-extrabold text-terracotta mt-1">0</h3>
+                    <p class="text-[11px] text-brownmuted">Main History Stack</p>
+                </div>
+                <div class="p-3 bg-parchment rounded-xl text-brownrich text-lg"><i class="fa-solid fa-box-archive"></i></div>
+            </div>
+
+            <div class="bg-cardbg p-4 rounded-xl border-2 border-borderwarm shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs uppercase font-bold text-brownmuted tracking-wider">Forward Stack</p>
+                    <h3 id="statForwardDepth" class="text-2xl font-extrabold text-caramel mt-1">0</h3>
+                    <p class="text-[11px] text-brownmuted">Redo / Forward Buffer</p>
+                </div>
+                <div class="p-3 bg-parchment rounded-xl text-brownrich text-lg"><i class="fa-solid fa-forward"></i></div>
+            </div>
+
+            <div class="bg-cardbg p-4 rounded-xl border-2 border-borderwarm shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs uppercase font-bold text-brownmuted tracking-wider">Total Active Pages</p>
+                    <h3 id="statTotalPages" class="text-2xl font-extrabold text-brownrich mt-1">0</h3>
+                    <p class="text-[11px] text-brownmuted">Across All 3 Tabs</p>
+                </div>
+                <div class="p-3 bg-parchment rounded-xl text-brownrich text-lg"><i class="fa-solid fa-globe"></i></div>
+            </div>
+
+            <div class="bg-cardbg p-4 rounded-xl border-2 border-borderwarm shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs uppercase font-bold text-brownmuted tracking-wider">Max Memory Used</p>
+                    <h3 id="statMaxDepth" class="text-2xl font-extrabold text-brownrich mt-1">0</h3>
+                    <p class="text-[11px] text-brownmuted">Peak Stack Height</p>
+                </div>
+                <div class="p-3 bg-parchment rounded-xl text-brownrich text-lg"><i class="fa-solid fa-memory"></i></div>
+            </div>
+        </div>
+
+        <!-- MAIN WORKSPACE GRID -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+            <!-- LEFT & CENTER COLUMN: CONTROLS, BROWSER FRAME & LOGS (7 COLS) -->
+            <div class="lg:col-span-7 space-y-6">
+
+                <!-- TAB SELECTOR BAR -->
+                <div class="bg-parchment p-2 rounded-2xl border-2 border-borderwarm flex items-center gap-2 overflow-x-auto">
+                    <button onclick="switchTab(0)" id="tabBtn0" class="tab-btn active px-4 py-2.5 rounded-xl text-xs md:text-sm font-semibold border border-transparent flex items-center gap-2 whitespace-nowrap">
+                        <i class="fa-solid fa-user text-terracotta"></i> Tab 1: Personal
+                        <span id="tabBadge0" class="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-caramelsoft text-brownrich font-bold">0</span>
+                    </button>
+                    <button onclick="switchTab(1)" id="tabBtn1" class="tab-btn text-brownmuted px-4 py-2.5 rounded-xl text-xs md:text-sm font-semibold border border-transparent flex items-center gap-2 whitespace-nowrap">
+                        <i class="fa-solid fa-code text-caramel"></i> Tab 2: Study / Code
+                        <span id="tabBadge1" class="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-sand text-brownmuted font-bold">0</span>
+                    </button>
+                    <button onclick="switchTab(2)" id="tabBtn2" class="tab-btn text-brownmuted px-4 py-2.5 rounded-xl text-xs md:text-sm font-semibold border border-transparent flex items-center gap-2 whitespace-nowrap">
+                        <i class="fa-solid fa-bag-shopping text-brownrich"></i> Tab 3: Shopping
+                        <span id="tabBadge2" class="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-sand text-brownmuted font-bold">0</span>
+                    </button>
+                </div>
+
+                <!-- NAVIGATION ACTION PANEL -->
+                <div class="bg-cardbg p-5 rounded-2xl border-2 border-borderwarm shadow-sm space-y-4">
+                    <h2 class="text-xs uppercase font-extrabold tracking-wider text-brownmuted flex items-center gap-2">
+                        <i class="fa-solid fa-sliders text-terracotta"></i> Stack Controls & Navigation
+                    </h2>
+
+                    <!-- Main Actions Grid -->
+                    <div class="flex flex-wrap gap-2.5">
+                        <button onclick="popStack()" id="btnBack" class="flex-1 min-w-[130px] py-3 px-4 bg-terracotta hover:bg-terracottahover disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-sm">
+                            <i class="fa-solid fa-arrow-left"></i>
+                            <span>Back (Pop)</span>
+                        </button>
+
+                        <button onclick="redoStack()" id="btnForward" class="flex-1 min-w-[130px] py-3 px-4 bg-caramel hover:bg-amber-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-sm">
+                            <span>Forward (Redo)</span>
+                            <i class="fa-solid fa-arrow-right"></i>
+                        </button>
+
+                        <button onclick="peekStack()" id="btnPeek" class="py-3 px-4 bg-parchment hover:bg-sand text-brownrich font-semibold rounded-xl border border-borderwarm transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-eye text-terracotta"></i>
+                            <span>Peek (Top)</span>
+                        </button>
+                    </div>
+
+                    <!-- URL Input Box -->
+                    <form onsubmit="handleUrlSubmit(event)" class="flex gap-2">
+                        <div class="relative flex-1">
+                            <span class="absolute inset-y-0 left-0 pl-3.5 flex items-center text-brownmuted text-sm">
+                                <i class="fa-solid fa-globe"></i>
+                            </span>
+                            <input type="text" id="urlInput" placeholder="Enter URL (e.g. github.com or Wikipedia)" class="w-full pl-10 pr-4 py-2.5 bg-cream border-2 border-borderwarm rounded-xl text-sm text-brownrich focus:outline-none focus:border-terracotta transition">
+                        </div>
+                        <button type="submit" class="px-5 py-2.5 bg-brownrich hover:bg-black text-white font-semibold rounded-xl text-sm transition flex items-center gap-2">
+                            <span>Visit (Push)</span>
+                            <i class="fa-solid fa-plus text-xs"></i>
+                        </button>
+                    </form>
+
+                    <!-- Quick Preset Buttons -->
+                    <div>
+                        <p class="text-[11px] font-bold text-brownmuted uppercase tracking-wider mb-2">Quick Visit Presets:</p>
+                        <div class="flex flex-wrap gap-2">
+                            <button onclick="pushPreset('google.com', 'Google Search', 'fa-brands fa-google', '#4285F4')" class="px-3 py-1.5 bg-cream hover:bg-caramelsoft border border-borderwarm rounded-lg text-xs font-semibold text-brownrich transition flex items-center gap-1.5">
+                                <i class="fa-brands fa-google text-blue-500"></i> Google
+                            </button>
+                            <button onclick="pushPreset('github.com', 'GitHub Repository', 'fa-brands fa-github', '#333')" class="px-3 py-1.5 bg-cream hover:bg-caramelsoft border border-borderwarm rounded-lg text-xs font-semibold text-brownrich transition flex items-center gap-1.5">
+                                <i class="fa-brands fa-github text-gray-800"></i> GitHub
+                            </button>
+                            <button onclick="pushPreset('youtube.com', 'YouTube Video', 'fa-brands fa-youtube', '#FF0000')" class="px-3 py-1.5 bg-cream hover:bg-caramelsoft border border-borderwarm rounded-lg text-xs font-semibold text-brownrich transition flex items-center gap-1.5">
+                                <i class="fa-brands fa-youtube text-red-600"></i> YouTube
+                            </button>
+                            <button onclick="pushPreset('wikipedia.org', 'Wikipedia Article', 'fa-solid fa-book-open', '#666')" class="px-3 py-1.5 bg-cream hover:bg-caramelsoft border border-borderwarm rounded-lg text-xs font-semibold text-brownrich transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-book-open text-gray-600"></i> Wikipedia
+                            </button>
+                            <button onclick="pushPreset('stackoverflow.com', 'StackOverflow QA', 'fa-brands fa-stack-overflow', '#F48024')" class="px-3 py-1.5 bg-cream hover:bg-caramelsoft border border-borderwarm rounded-lg text-xs font-semibold text-brownrich transition flex items-center gap-1.5">
+                                <i class="fa-brands fa-stack-overflow text-orange-500"></i> StackOverflow
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LIVE INTERACTIVE BROWSER FRAME PREVIEW -->
+                <div class="bg-cardbg rounded-2xl border-2 border-borderwarm shadow-sm overflow-hidden flex flex-col">
+                    <!-- Browser Window Header Bar -->
+                    <div class="bg-parchment px-4 py-3 border-b-2 border-borderwarm flex items-center gap-3">
+                        <!-- Window Controls -->
+                        <div class="flex items-center gap-1.5">
+                            <span class="w-3 h-3 rounded-full bg-red-400 inline-block"></span>
+                            <span class="w-3 h-3 rounded-full bg-amber-400 inline-block"></span>
+                            <span class="w-3 h-3 rounded-full bg-emerald-400 inline-block"></span>
+                        </div>
+
+                        <!-- Browser Nav Buttons -->
+                        <div class="flex items-center gap-1 ml-2 text-brownmuted">
+                            <button onclick="popStack()" id="frameBackBtn" class="p-1 hover:text-terracotta disabled:opacity-30 disabled:hover:text-brownmuted">
+                                <i class="fa-solid fa-chevron-left text-xs"></i>
+                            </button>
+                            <button onclick="redoStack()" id="frameForwardBtn" class="p-1 hover:text-caramel disabled:opacity-30 disabled:hover:text-brownmuted">
+                                <i class="fa-solid fa-chevron-right text-xs"></i>
+                            </button>
+                            <button onclick="refreshBrowser()" class="p-1 hover:text-brownrich">
+                                <i class="fa-solid fa-rotate-right text-xs"></i>
+                            </button>
+                        </div>
+
+                        <!-- Browser Address Bar -->
+                        <div class="flex-1 bg-white border border-borderwarm rounded-lg px-3 py-1 flex items-center gap-2 text-xs text-brownrich shadow-inner">
+                            <i class="fa-solid fa-lock text-[10px] text-emerald-600"></i>
+                            <span id="frameUrlText" class="font-mono truncate">https://browser.home</span>
+                        </div>
+                    </div>
+
+                    <!-- Animated Progress Indicator -->
+                    <div class="w-full bg-parchment">
+                        <div id="browserLoader" class="loading-bar"></div>
+                    </div>
+
+                    <!-- Browser Canvas Viewport -->
+                    <div id="browserViewport" class="p-8 min-h-[190px] flex flex-col items-center justify-center text-center bg-cream transition-all">
+                        <div id="viewportContent" class="space-y-3 max-w-md">
+                            <div class="w-14 h-14 bg-caramelsoft text-terracotta rounded-2xl flex items-center justify-center text-2xl mx-auto shadow-sm">
+                                <i id="viewportIcon" class="fa-solid fa-house"></i>
+                            </div>
+                            <div>
+                                <h3 id="viewportTitle" class="text-lg font-bold text-brownrich">New Tab Home Page</h3>
+                                <p id="viewportSubtitle" class="text-xs text-brownmuted mt-1">Stack is currently empty. Visit a webpage or select a preset above to push onto the stack!</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SYSTEM ACTIVITY LOG CARD -->
+                <div class="bg-cardbg p-4 rounded-2xl border-2 border-borderwarm shadow-sm space-y-2">
+                    <div class="flex items-center justify-between">
+                        <h3 class="text-xs uppercase font-extrabold tracking-wider text-brownmuted flex items-center gap-2">
+                            <i class="fa-solid fa-terminal text-terracotta"></i> System Activity Log
+                        </h3>
+                        <button onclick="clearLogs()" class="text-[11px] text-brownmuted hover:text-terracotta font-semibold">Clear Log</button>
+                    </div>
+                    <div id="logBox" class="h-28 bg-cream border border-borderwarm rounded-xl p-3 font-mono text-xs overflow-y-auto space-y-1 text-brownrich">
+                        <div class="text-brownmuted">[00:00:00] System initialized. Waiting for user navigation...</div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- RIGHT COLUMN: ANIMATED STACK TRACK & LIFO POINTERS (5 COLS) -->
+            <div class="lg:col-span-5 space-y-6">
+
+                <!-- MAIN STACK VISUALIZER TRACK -->
+                <div class="bg-cardbg p-5 rounded-2xl border-2 border-borderwarm shadow-sm space-y-4">
+                    <div class="flex items-center justify-between border-b-2 border-borderwarm pb-3">
+                        <div>
+                            <h2 class="text-sm font-bold text-brownrich flex items-center gap-2">
+                                <i class="fa-solid fa-bars-staggered text-terracotta"></i> LIFO Stack Memory Track
+                            </h2>
+                            <p class="text-[11px] text-brownmuted">Top of stack represents the active page</p>
+                        </div>
+                        <span class="text-xs font-mono font-bold bg-caramelsoft text-brownrich px-2.5 py-1 rounded-lg border border-caramel/30" id="stackCountTag">
+                            0 Items
+                        </span>
+                    </div>
+
+                    <!-- Visual Stack Container -->
+                    <div class="relative min-h-[360px] max-h-[460px] overflow-y-auto p-3 bg-cream border-2 border-dashed border-borderwarm rounded-xl space-y-3 flex flex-col" id="stackTrack">
+                        <!-- Empty Stack State Message -->
+                        <div id="emptyStackMsg" class="my-auto text-center p-6 space-y-2">
+                            <i class="fa-solid fa-layer-group text-3xl text-brownmuted/40"></i>
+                            <p class="text-sm font-semibold text-brownmuted">Stack Underflow / Empty</p>
+                            <p class="text-xs text-brownmuted/70">No pages in history for this tab yet.</p>
+                        </div>
+                    </div>
+
+                    <!-- Forward Stack Buffer Indicator -->
+                    <div class="bg-parchment p-3 rounded-xl border border-borderwarm flex items-center justify-between">
+                        <div class="flex items-center gap-2 text-xs text-brownrich font-semibold">
+                            <i class="fa-solid fa-rotate-right text-caramel"></i>
+                            <span>Forward Redo Buffer:</span>
+                        </div>
+                        <div id="forwardStackPills" class="flex gap-1 overflow-x-auto max-w-[200px]">
+                            <span class="text-[11px] text-brownmuted italic">Empty</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LIFO OPERATIONAL THEORY CARD -->
+                <div class="bg-cardbg p-5 rounded-2xl border-2 border-borderwarm shadow-sm space-y-3">
+                    <h3 class="text-xs uppercase font-extrabold tracking-wider text-brownmuted flex items-center gap-2">
+                        <i class="fa-solid fa-graduation-cap text-terracotta"></i> Stack Data Structure Rules
+                    </h3>
+                    <ul class="text-xs text-brownrich space-y-2 list-disc pl-4 leading-relaxed">
+                        <li><strong>Push Operation:</strong> Adds a new webpage to the top of the stack (O(1) time). Clears the Forward Redo stack!</li>
+                        <li><strong>Pop Operation:</strong> Removes the current top webpage when you click 'Back' (O(1) time).</li>
+                        <li><strong>LIFO Constraint:</strong> You can only view or interact directly with the <em>Topmost</em> item.</li>
+                    </ul>
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- FOOTER -->
+        <footer class="text-center text-xs text-brownmuted pt-4 border-t border-borderwarm">
+            Browser History Stack Simulator &bull; Academic Computer Science Visualizer
+        </footer>
+
+    </div>
+
+    <!-- JAVASCRIPT ENGINE & LOGIC -->
+    <script>
+        // State Management across 3 Tabs
+        const tabsData = [
+            { id: 0, name: "Personal", backStack: [], forwardStack: [] },
+            { id: 1, name: "Study / Code", backStack: [], forwardStack: [] },
+            { id: 2, name: "Shopping", backStack: [], forwardStack: [] }
+        ];
+
+        let activeTabIndex = 0;
+        let maxStackDepthObserved = 0;
+        let isAutoDemoRunning = false;
+        let demoInterval = null;
+
+        // Default initial preset items to populate tabs nicely on load
+        const initialPresets = [
+            [
+                { url: "google.com", title: "Google Search", icon: "fa-brands fa-google", color: "#4285F4" },
+                { url: "wikipedia.org", title: "Wikipedia: Computer Science", icon: "fa-solid fa-book-open", color: "#666666" }
+            ],
+            [
+                { url: "github.com", title: "GitHub: Stack Algorithm", icon: "fa-brands fa-github", color: "#333333" }
+            ],
+            []
+        ];
+
+        // Initialize App on Window Load
+        window.onload = function() {
+            // Seed initial data
+            initialPresets.forEach((list, idx) => {
+                list.forEach(item => tabsData[idx].backStack.push(item));
+            });
+            
+            updateAnalytics();
+            renderUI();
+            logAction("Application loaded with multi-tab stack state initialized.");
+        };
+
+        // Switch Active Browser Tab
+        function switchTab(tabIndex) {
+            activeTabIndex = tabIndex;
+            
+            // Update Tab Button Styles
+            for (let i = 0; i < 3; i++) {
+                const btn = document.getElementById(`tabBtn${i}`);
+                if (i === tabIndex) {
+                    btn.classList.add('active');
+                    btn.classList.remove('text-brownmuted');
+                } else {
+                    btn.classList.remove('active');
+                    btn.classList.add('text-brownmuted');
+                }
+            }
+
+            logAction(`Switched focus to Tab ${tabIndex + 1}: ${tabsData[tabIndex].name}`);
+            renderUI();
+        }
+
+        // Push Page Operation
+        function pushPage(pageObj) {
+            const currentTab = tabsData[activeTabIndex];
+            
+            // Push to main stack
+            currentTab.backStack.push(pageObj);
+            
+            // Rule of Browser History: Any new Push clears the Forward (Redo) stack!
+            if (currentTab.forwardStack.length > 0) {
+                currentTab.forwardStack = [];
+                logAction(`[LIFO Rule] Forward stack buffer cleared due to new push.`);
+            }
+
+            logAction(`PUSH: Visited "${pageObj.url}" on Tab ${activeTabIndex + 1}`);
+            triggerBrowserLoader();
+            renderUI();
+            updateAnalytics();
+        }
+
+        // Pop Page Operation (Back Button)
+        function popStack() {
+            const currentTab = tabsData[activeTabIndex];
+            if (currentTab.backStack.length === 0) {
+                logAction(`[Underflow Error] Cannot Pop! Stack is empty.`);
+                return;
+            }
+
+            // Animate top node exit before array mutation
+            const topCard = document.querySelector('.stack-card-top');
+            if (topCard) {
+                topCard.classList.add('stack-card-exit');
+                setTimeout(() => {
+                    executePopLogic();
+                }, 250);
+            } else {
+                executePopLogic();
+            }
+        }
+
+        function executePopLogic() {
+            const currentTab = tabsData[activeTabIndex];
+            const poppedItem = currentTab.backStack.pop();
+            
+            // Push popped item to forward stack
+            currentTab.forwardStack.push(poppedItem);
+
+            logAction(`POP: Left "${poppedItem.url}". Moved item to Forward Buffer.`);
+            triggerBrowserLoader();
+            renderUI();
+            updateAnalytics();
+        }
+
+        // Forward / Redo Operation
+        function redoStack() {
+            const currentTab = tabsData[activeTabIndex];
+            if (currentTab.forwardStack.length === 0) {
+                logAction(`[Redo Warning] Forward stack buffer is empty.`);
+                return;
+            }
+
+            const itemToRestore = currentTab.forwardStack.pop();
+            currentTab.backStack.push(itemToRestore);
+
+            logAction(`FORWARD REDO: Restored "${itemToRestore.url}" back onto main stack.`);
+            triggerBrowserLoader();
+            renderUI();
+            updateAnalytics();
+        }
+
+        // Peek Operation (Highlight Top Element)
+        function peekStack() {
+            const currentTab = tabsData[activeTabIndex];
+            if (currentTab.backStack.length === 0) {
+                logAction(`PEEK: Main stack is empty. Top = null.`);
+                return;
+            }
+
+            const topItem = currentTab.backStack[currentTab.backStack.length - 1];
+            logAction(`PEEK TOP: Current active page is "${topItem.title}" (${topItem.url}).`);
+
+            const topCard = document.querySelector('.stack-card-top');
+            if (topCard) {
+                topCard.classList.add('peek-pulse');
+                setTimeout(() => {
+                    topCard.classList.remove('peek-pulse');
+                }, 2500);
+            }
+        }
+
+        // Form Submit Handler
+        function handleUrlSubmit(e) {
+            e.preventDefault();
+            const input = document.getElementById('urlInput');
+            let rawUrl = input.value.trim();
+            if (!rawUrl) return;
+
+            // Format URL clean
+            let cleanUrl = rawUrl.replace(/^https?:\/\//, '');
+            let title = cleanUrl.split('/')[0];
+            title = title.charAt(0).toUpperCase() + title.slice(1);
+
+            pushPage({
+                url: cleanUrl,
+                title: title + " Page",
+                icon: "fa-solid fa-globe",
+                color: "#b85d43"
+            });
+
+            input.value = '';
+        }
+
+        // Preset Buttons Handler
+        function pushPreset(url, title, icon, color) {
+            pushPage({ url, title, icon, color });
+        }
+
+        // Reset Current Tab
+        function clearCurrentStack() {
+            const currentTab = tabsData[activeTabIndex];
+            currentTab.backStack = [];
+            currentTab.forwardStack = [];
+            logAction(`RESET: Cleared all history & buffers for Tab ${activeTabIndex + 1}.`);
+            renderUI();
+            updateAnalytics();
+        }
+
+        // Render Entire UI State
+        function renderUI() {
+            const currentTab = tabsData[activeTabIndex];
+            const backStack = currentTab.backStack;
+            const forwardStack = currentTab.forwardStack;
+
+            // Update Badges on Tab Buttons
+            tabsData.forEach((t, i) => {
+                document.getElementById(`tabBadge${i}`).textContent = t.backStack.length;
+            });
+
+            // Update Control Button Disabled States
+            document.getElementById('btnBack').disabled = backStack.length === 0;
+            document.getElementById('frameBackBtn').disabled = backStack.length === 0;
+            document.getElementById('btnForward').disabled = forwardStack.length === 0;
+            document.getElementById('frameForwardBtn').disabled = forwardStack.length === 0;
+
+            // Render Stack Track (Right Column)
+            const stackTrack = document.getElementById('stackTrack');
+            document.getElementById('stackCountTag').textContent = `${backStack.length} Item${backStack.length === 1 ? '' : 's'}`;
+
+            if (backStack.length === 0) {
+                stackTrack.innerHTML = `
+                    <div id="emptyStackMsg" class="my-auto text-center p-6 space-y-2">
+                        <i class="fa-solid fa-layer-group text-3xl text-brownmuted/40"></i>
+                        <p class="text-sm font-semibold text-brownmuted">Stack Underflow / Empty</p>
+                        <p class="text-xs text-brownmuted/70">No pages in history for this tab yet.</p>
+                    </div>
+                `;
+            } else {
+                stackTrack.innerHTML = '';
+                
+                // Render elements top-down (LIFO view: highest index at the top)
+                for (let i = backStack.length - 1; i >= 0; i--) {
+                    const item = backStack[i];
+                    const isTop = (i === backStack.length - 1);
+
+                    const card = document.createElement('div');
+                    card.className = `stack-card ${isTop ? 'stack-card-top border-2 border-terracotta bg-white shadow-md' : 'bg-parchment/80 border border-borderwarm opacity-90'} p-3.5 rounded-xl flex items-center justify-between space-x-3`;
+                    
+                    if (isTop) {
+                        card.classList.add('stack-card-enter');
+                    }
+
+                    card.innerHTML = `
+                        <div class="flex items-center space-x-3 truncate">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold" style="background-color: ${item.color}15; color: ${item.color}">
+                                <i class="${item.icon}"></i>
+                            </span>
+                            <div class="truncate">
+                                <div class="flex items-center gap-2">
+                                    <h4 class="text-xs font-bold text-brownrich truncate">${item.title}</h4>
+                                    ${isTop ? '<span class="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-terracotta text-white">TOP</span>' : ''}
+                                </div>
+                                <p class="text-[11px] font-mono text-brownmuted truncate">${item.url}</p>
+                            </div>
+                        </div>
+                        <div class="text-right flex-shrink-0">
+                            <span class="text-[10px] font-mono font-semibold px-2 py-1 rounded bg-sand text-brownrich">
+                                Index [${i}]
+                            </span>
+                        </div>
+                    `;
+                    stackTrack.appendChild(card);
+                }
+            }
+
+            // Render Forward Buffer Pills
+            const forwardBox = document.getElementById('forwardStackPills');
+            if (forwardStack.length === 0) {
+                forwardBox.innerHTML = `<span class="text-[11px] text-brownmuted italic">Empty</span>`;
+            } else {
+                forwardBox.innerHTML = forwardStack.map(item => `
+                    <span class="text-[10px] font-mono bg-caramelsoft text-brownrich px-2 py-0.5 rounded border border-caramel/30 whitespace-nowrap">
+                        ${item.url}
+                    </span>
+                `).join('');
+            }
+
+            // Render Live Browser Viewport Preview
+            renderBrowserViewport();
+        }
+
+        // Render Browser Frame Viewport based on Top Page
+        function renderBrowserViewport() {
+            const currentTab = tabsData[activeTabIndex];
+            const backStack = currentTab.backStack;
+
+            const frameUrl = document.getElementById('frameUrlText');
+            const vIcon = document.getElementById('viewportIcon');
+            const vTitle = document.getElementById('viewportTitle');
+            const vSubtitle = document.getElementById('viewportSubtitle');
+
+            if (backStack.length === 0) {
+                frameUrl.textContent = "https://browser.home";
+                vIcon.className = "fa-solid fa-house";
+                vTitle.textContent = `${tabsData[activeTabIndex].name} Home`;
+                vSubtitle.textContent = "Stack is currently empty. Visit a webpage or click a preset to push onto the stack!";
+            } else {
+                const topPage = backStack[backStack.length - 1];
+                frameUrl.textContent = `https://${topPage.url}`;
+                vIcon.className = topPage.icon;
+                vTitle.textContent = topPage.title;
+                vSubtitle.textContent = `Active Page sitting at the TOP of Tab ${activeTabIndex + 1}'s Stack memory index [${backStack.length - 1}].`;
+            }
+        }
+
+        // Simulate Browser Loading Progress Bar
+        function triggerBrowserLoader() {
+            const loader = document.getElementById('browserLoader');
+            loader.style.width = '30%';
+            setTimeout(() => { loader.style.width = '70%'; }, 150);
+            setTimeout(() => { loader.style.width = '100%'; }, 300);
+            setTimeout(() => { loader.style.width = '0%'; }, 500);
+        }
+
+        function refreshBrowser() {
+            triggerBrowserLoader();
+            logAction(`Refreshed current view.`);
+        }
+
+        // Update Analytics Counters
+        function updateAnalytics() {
+            const currentTab = tabsData[activeTabIndex];
+            const backDepth = currentTab.backStack.length;
+            const forwardDepth = currentTab.forwardStack.length;
+
+            document.getElementById('statBackDepth').textContent = backDepth;
+            document.getElementById('statForwardDepth').textContent = forwardDepth;
+
+            // Calculate total pages across all tabs
+            const totalAcrossTabs = tabsData.reduce((acc, t) => acc + t.backStack.length, 0);
+            document.getElementById('statTotalPages').textContent = totalAcrossTabs;
+
+            // Track maximum observed stack height
+            if (backDepth > maxStackDepthObserved) {
+                maxStackDepthObserved = backDepth;
+            }
+            document.getElementById('statMaxDepth').textContent = maxStackDepthObserved;
+        }
+
+        // System Log Printer
+        function logAction(msg) {
+            const logBox = document.getElementById('logBox');
+            const timeStr = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = "text-brownrich font-mono text-[11px]";
+            logEntry.innerHTML = `<span class="text-brownmuted">[${timeStr}]</span> ${msg}`;
+            logBox.appendChild(logEntry);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        function clearLogs() {
+            document.getElementById('logBox').innerHTML = `<div class="text-brownmuted">[System] Logs cleared.</div>`;
+        }
+
+        // Step-by-Step Auto-Play Demo Simulation Mode
+        function toggleAutoDemo() {
+            const demoBtnText = document.getElementById('demoText');
+            const demoIcon = document.getElementById('demoIcon');
+
+            if (isAutoDemoRunning) {
+                clearInterval(demoInterval);
+                isAutoDemoRunning = false;
+                demoBtnText.textContent = "Auto-Play Demo";
+                demoIcon.className = "fa-solid fa-play text-terracotta";
+                logAction("Stopped Auto-Play Demo mode.");
+                return;
+            }
+
+            isAutoDemoRunning = true;
+            demoBtnText.textContent = "Stop Demo";
+            demoIcon.className = "fa-solid fa-square text-terracotta";
+            logAction("Started Auto-Play Demo simulation sequence...");
+
+            const demoSteps = [
+                () => pushPreset('google.com', 'Google Search', 'fa-brands fa-google', '#4285F4'),
+                () => pushPreset('wikipedia.org', 'Wikipedia', 'fa-solid fa-book-open', '#666'),
+                () => pushPreset('github.com', 'GitHub', 'fa-brands fa-github', '#333'),
+                () => popStack(), // Go back
+                () => popStack(), // Go back again
+                () => redoStack(), // Forward
+                () => pushPreset('youtube.com', 'YouTube', 'fa-brands fa-youtube', '#FF0000'), // Clears forward stack!
+                () => peekStack()
+            ];
+
+            let stepIdx = 0;
+            demoInterval = setInterval(() => {
+                if (stepIdx < demoSteps.length) {
+                    demoSteps[stepIdx]();
+                    stepIdx++;
+                } else {
+                    clearInterval(demoInterval);
+                    isAutoDemoRunning = false;
+                    demoBtnText.textContent = "Auto-Play Demo";
+                    demoIcon.className = "fa-solid fa-play text-terracotta";
+                    logAction("Auto-Play Demo simulation complete!");
+                }
+            }, 1800);
+        }
+    </script>
+</body>
+</html>
